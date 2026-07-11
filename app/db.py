@@ -152,6 +152,24 @@ class ReportCitation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
+class AppEvent(Base):
+    __tablename__ = "app_events"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    event_type: Mapped[str] = mapped_column(String(128), index=True)
+    case_id: Mapped[UUID | None] = mapped_column(nullable=True, index=True)
+    material_id: Mapped[UUID | None] = mapped_column(nullable=True, index=True)
+    review_task_id: Mapped[UUID | None] = mapped_column(nullable=True, index=True)
+    request_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(32), default="success", index=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    error_type: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    safe_metadata: Mapped[dict] = mapped_column(json_type(), default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
 settings = get_settings()
 engine = create_engine(
     settings.database_url,

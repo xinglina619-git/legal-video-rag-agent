@@ -1,5 +1,6 @@
 import json
 import re
+from time import perf_counter
 from uuid import UUID
 
 from sqlalchemy import delete, select
@@ -9,6 +10,7 @@ from app.db import CaseMaterial, CaseRecord, CaseReport, IntakeMessage, Material
 from app.schemas import CaseCreate, CaseUpdate, IntakeResponse
 from app.services.ingestion import ingest
 from app.services.llm import get_chat_model_with_fallback
+from app.services.observability import emit_event
 from app.services.privacy import redact_sensitive_text
 
 MAX_INTAKE_TURNS = 8
@@ -145,6 +147,16 @@ def create_case(payload: CaseCreate) -> dict:
         )
         session.commit()
         session.refresh(case)
+        case_id = case.id
+    emit_event(
+        "case.created",
+        case_id=case_id,
+        metadata={
+            "title": payload.title,
+            "dispute_type": payload.dispute_type,
+            "has_narrative": bool(payload.narrative.strip()),
+        },
+    )
     return _case_payload(case)
 
 
@@ -249,6 +261,7 @@ def answer_intake(
     provider: str | None,
     model: str | None,
 ) -> IntakeResponse:
+    started = perf_counter()
     with SessionLocal() as session:
         case = session.get(CaseRecord, case_id)
         if not case:
@@ -319,6 +332,18 @@ def answer_intake(
             )
         session.commit()
 
+    emit_event(
+        "intake.answered",
+        case_id=case_id,
+        duration_ms=int((perf_counter() - started) * 1000),
+        provider=provider,
+        model=model,
+        metadata={
+            "turn_no": turn_no,
+            "complete": complete,
+            "missing_information_count": len(missing),
+        },
+    )
     return IntakeResponse(
         case_id=case_id,
         complete=complete,

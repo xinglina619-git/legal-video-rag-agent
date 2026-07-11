@@ -1,6 +1,7 @@
 import sqlite3
 from functools import lru_cache
 from pathlib import Path
+from time import perf_counter
 from typing import TypedDict
 from uuid import UUID
 
@@ -14,6 +15,7 @@ from app.schemas import Citation, ReportResponse, ReviewDecision
 from app.services.authority import QuestionRoute, classify_question, rank_authority_results
 from app.services.llm import get_chat_model_with_fallback
 from app.services.official_search import search_official_sources
+from app.services.observability import emit_event
 from app.services.privacy import redact_sensitive_text
 from app.services.qdrant_store import get_hybrid_store
 
@@ -91,12 +93,27 @@ def _build_graph(settings: Settings):
     store = get_hybrid_store(settings)
 
     def evidence_node(state: AgentState):
+        started = perf_counter()
         material_ids = state.get("material_ids") or [state["material_id"]]
         query = state.get("retrieval_query") or state["question"]
         found = store.search(settings.evidence_collection, query, material_ids)
+        emit_event(
+            "retrieval.completed",
+            status="success",
+            duration_ms=int((perf_counter() - started) * 1000),
+            provider=state["provider"],
+            model=state["model"],
+            metadata={
+                "collection": settings.evidence_collection,
+                "result_count": len(found),
+                "material_count": len(material_ids),
+                "top_score": found[0].score if found else None,
+            },
+        )
         return {"evidence": [item.model_dump(mode="json") for item in found]}
 
     def authority_node(state: AgentState):
+        started = perf_counter()
         query = state.get("retrieval_query") or state["question"]
         candidates = store.search(settings.authority_collection, query, [], limit=16)
         route = QuestionRoute(**state["route"])
@@ -112,6 +129,20 @@ def _build_graph(settings: Settings):
                 )
             except Exception:
                 pass
+        emit_event(
+            "retrieval.completed",
+            status="success",
+            duration_ms=int((perf_counter() - started) * 1000),
+            provider=state["provider"],
+            model=state["model"],
+            metadata={
+                "collection": settings.authority_collection,
+                "candidate_count": len(candidates),
+                "result_count": len(authorities[:6]),
+                "legal_domain": route.legal_domain,
+                "top_score": authorities[0].score if authorities else None,
+            },
+        )
         return {
             "authorities": [
                 item.model_dump(mode="json") for item in authorities[:6]
@@ -119,6 +150,7 @@ def _build_graph(settings: Settings):
         }
 
     def draft_node(state: AgentState):
+        started = perf_counter()
         result = get_chat_model_with_fallback(
             settings, state["provider"], state["model"]
         ).invoke(
@@ -131,7 +163,20 @@ def _build_graph(settings: Settings):
                 authority=format_citations_for_prompt(state["authorities"], "依据"),
             )
         )
-        return {"draft": str(result.content)}
+        draft = str(result.content)
+        emit_event(
+            "report.generated",
+            status="success",
+            duration_ms=int((perf_counter() - started) * 1000),
+            provider=state["provider"],
+            model=state["model"],
+            metadata={
+                "draft_chars": len(draft),
+                "evidence_count": len(state["evidence"]),
+                "authority_count": len(state["authorities"]),
+            },
+        )
+        return {"draft": draft}
 
     def review_node(state: AgentState):
         decision = interrupt(
@@ -174,6 +219,7 @@ def run_report(
     retrieval_query: str | None = None,
     legal_domain: str | None = None,
 ) -> ReportResponse:
+    started = perf_counter()
     selected_ids = material_ids or ([material_id] if material_id else [])
     if not selected_ids:
         raise ValueError("至少需要一份问答案情或案件材料")
@@ -187,6 +233,14 @@ def run_report(
         session.commit()
         session.refresh(task)
         task_id = task.id
+    emit_event(
+        "report.started",
+        status="started",
+        review_task_id=task_id,
+        provider=provider,
+        model=model,
+        metadata={"material_count": len(selected_ids), "question_chars": len(question)},
+    )
 
     graph = _build_graph(settings)
     config = {"configurable": {"thread_id": str(task_id)}}
@@ -229,6 +283,19 @@ def run_report(
             ]
         )
         session.commit()
+    emit_event(
+        "report.generated",
+        status="success",
+        review_task_id=task_id,
+        duration_ms=int((perf_counter() - started) * 1000),
+        provider=provider,
+        model=model,
+        metadata={
+            "citation_count": len(response_citations),
+            "legal_domain": route.legal_domain,
+            "report_chars": len(state["draft"]),
+        },
+    )
     return ReportResponse(
         report_markdown=state["draft"],
         citations=response_citations,
@@ -265,6 +332,15 @@ def resume_review(settings: Settings, task_id: UUID, decision: ReviewDecision) -
         task.status = status
         task.report_markdown = state["draft"]
         session.commit()
+        emit_event(
+            f"review.{status}",
+            status=status,
+            review_task_id=task_id,
+            metadata={
+                "notes_chars": len(decision.notes or ""),
+                "edited_report_chars": len(decision.edited_report or ""),
+            },
+        )
         return {
             "task_id": str(task.id),
             "status": task.status,

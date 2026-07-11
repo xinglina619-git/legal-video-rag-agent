@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     official_web_search_enabled: bool = False
     official_web_search_timeout_seconds: int = 12
     official_web_search_limit: int = 3
+    langsmith_tracing: bool = False
+    langsmith_api_key: str | None = None
+    langsmith_project: str = "legal-video-rag-agent"
+    langsmith_sample_rate: float = 0.0
+    langsmith_record_inputs: bool = False
     hf_token: str | None = None
     pageindex_home: Path = Path(".vendor/pageindex")
     model_config = SettingsConfigDict(

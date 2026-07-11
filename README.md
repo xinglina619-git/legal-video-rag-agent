@@ -59,6 +59,7 @@ data/demo/loan_case/
 - `docs/demo-guide.md`：3 分钟演示步骤；
 - `docs/interview-notes.md`：简历写法与高频面试题；
 - `docs/task-status.md`：长任务状态设计；
+- `docs/production-observability.md`：生产级可观测性、LangSmith 与评估说明；
 - `docs/sample-output/loan_case_report_example.md`：示例报告。
 
 ## 快速开始
@@ -88,6 +89,28 @@ streamlit run streamlit_app.py --server.port 8502
 ```
 
 该脚本会输出 `total`、`hits`、`recall_at_k` 和每个问题召回的 `top_titles`，用于面试中说明“不是只凭感觉判断 RAG 效果”。
+
+报告质量回归检查：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\eval_report_quality.py data\demo\loan_case\report_quality_cases.jsonl
+```
+
+该脚本会检查报告是否包含必要章节、`[证据N]` / `[依据N]` 引用，以及是否出现“胜诉率”“一定胜诉”等越界表达。
+
+## 可观测性与 LangSmith
+
+系统会将关键流程写入 `app_events` 审计事件表，用于排查材料处理、检索、报告生成和人工复核问题。LangSmith tracing 默认关闭；如需调试 Agent trace，可在 `.env.local` 中显式开启：
+
+```env
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=你的 LangSmith API Key
+LANGSMITH_PROJECT=legal-video-rag-agent
+LANGSMITH_SAMPLE_RATE=0.1
+LANGSMITH_RECORD_INPUTS=false
+```
+
+真实案件材料接入第三方观测平台前，应先确认授权、脱敏和采样策略。
 
 ## 公开数据边界
 

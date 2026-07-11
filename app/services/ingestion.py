@@ -1,5 +1,6 @@
 import hashlib
 from pathlib import Path
+from time import perf_counter
 
 from sqlalchemy import select
 
@@ -8,6 +9,7 @@ from app.db import AuthorityProfile, Material, SessionLocal
 from app.schemas import MaterialResponse
 from app.services.authority import infer_authority_metadata
 from app.services.normalizer import normalize
+from app.services.observability import emit_event
 from app.services.qdrant_store import HybridStore, get_hybrid_store
 from app.services.versioning import create_version, next_version, transition_material
 
@@ -30,6 +32,7 @@ def ingest(
     force_new_version: bool = False,
     supplied_hash: str | None = None,
 ) -> MaterialResponse:
+    started = perf_counter()
     resolved_path = str(path.resolve())
     digest = supplied_hash or content_hash(path)
     with SessionLocal() as session:
@@ -62,6 +65,17 @@ def ingest(
 
     source_type = segments[0].source_type
     title = Path(display_name).stem if display_name else path.stem
+    emit_event(
+        "material.normalized",
+        status="success",
+        duration_ms=int((perf_counter() - started) * 1000),
+        metadata={
+            "title": title,
+            "kind": kind,
+            "source_type": source_type,
+            "segments": len(segments),
+        },
+    )
     metadata = authority_metadata or (
         infer_authority_metadata(path, path.parent) if kind == "authority" else None
     )
@@ -100,8 +114,28 @@ def ingest(
             collection, material_id, title, segments, metadata=metadata
         )
         transition_material(material_id, "indexed")
+        emit_event(
+            "material.indexed",
+            status="success",
+            material_id=material_id,
+            duration_ms=int((perf_counter() - started) * 1000),
+            metadata={
+                "title": title,
+                "kind": kind,
+                "collection": collection,
+                "segments": len(segments),
+            },
+        )
     except Exception:
         transition_material(material_id, "error")
+        emit_event(
+            "operation.failed",
+            status="error",
+            material_id=material_id,
+            duration_ms=int((perf_counter() - started) * 1000),
+            error_type="material.indexing_failed",
+            metadata={"title": title, "kind": kind, "collection": collection},
+        )
         raise
     return MaterialResponse(
         material_id=material_id,
