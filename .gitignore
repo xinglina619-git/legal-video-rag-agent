@@ -1,0 +1,35 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Tooling
+.pytest_cache/
+.test-*/
+.test-*.log
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Local data and generated artifacts
+storage/
+data/raw/
+data/processed/
+outputs/
+*.log
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+*.egg-info/
+
+data/local_corpus/
