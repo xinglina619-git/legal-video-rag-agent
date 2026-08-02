@@ -7,7 +7,7 @@ from app.config import get_settings
 from sqlalchemy import select
 
 from app.db import ReportCitation, ReviewTask, SessionLocal
-from app.schemas import ReportRequest, ReportResponse
+from app.schemas import ReportRequest, ReportResponse, TaskStatusResponse
 from app.services.agent import run_report
 from app.services.cases import (
     analysis_context_for_case,
@@ -16,13 +16,22 @@ from app.services.cases import (
     material_ids_for_case,
 )
 from app.services.report_export import render_report_docx, render_report_pdf
+from app.services.task_queue import enqueue_task
 
 router = APIRouter(tags=["report"])
 
 
-@router.post("/reports", response_model=ReportResponse)
+@router.post("/reports", response_model=ReportResponse | TaskStatusResponse)
 def report(request: ReportRequest):
     try:
+        if request.background:
+            return enqueue_task(
+                get_settings(),
+                "report_generation",
+                request.model_dump(mode="json"),
+                idempotency_key=f"report:{request.case_id or request.material_id}:{request.question}",
+                case_id=request.case_id,
+            )
         material_ids = None
         retrieval_query = None
         legal_domain = None

@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     langsmith_project: str = "legal-video-rag-agent"
     langsmith_sample_rate: float = 0.0
     langsmith_record_inputs: bool = False
+    task_queue_mode: str = "inline"
+    redis_url: str = "redis://localhost:6379/0"
+    task_queue_name: str = "legal-agent"
+    task_max_attempts: int = 3
     hf_token: str | None = None
     pageindex_home: Path = Path(".vendor/pageindex")
     model_config = SettingsConfigDict(

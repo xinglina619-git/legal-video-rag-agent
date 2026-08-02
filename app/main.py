@@ -4,7 +4,7 @@ from fastapi import FastAPI
 
 from app.config import get_settings
 from app.db import init_db
-from app.routers import authorities, cases, materials, reports
+from app.routers import authorities, cases, materials, reports, tasks
 from app.services.observability import configure_langsmith_environment
 
 
@@ -27,3 +27,4 @@ app.include_router(materials.router)
 app.include_router(cases.router)
 app.include_router(authorities.router)
 app.include_router(reports.router)
+app.include_router(tasks.router)

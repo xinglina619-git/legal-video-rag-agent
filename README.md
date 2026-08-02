@@ -12,6 +12,7 @@
 - **证据与依据双库**：本案材料进入 Evidence Collection，法规、司法解释和官方材料进入 Authority Collection。
 - **可追溯报告**：报告来源清单区分 `[证据N]` 和 `[依据N]`，便于人工核验。
 - **安全边界**：在线模型调用前脱敏手机号、身份证号、银行卡号；报告不输出胜诉率或确定裁判结论。
+- **长任务队列化**：视频转写、OCR 和报告生成可切换为 Redis/RQ 后台任务，前端通过任务状态查询进度。
 
 ## 支持的输入
 
@@ -59,6 +60,7 @@ data/demo/loan_case/
 - `docs/demo-guide.md`：3 分钟演示步骤；
 - `docs/interview-notes.md`：简历写法与高频面试题；
 - `docs/task-status.md`：长任务状态设计；
+- `docs/task-queue.md`：长任务队列、Worker 与任务状态机；
 - `docs/production-observability.md`：生产级可观测性、LangSmith 与评估说明；
 - `docs/sample-output/loan_case_report_example.md`：示例报告。
 
@@ -71,6 +73,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e ".[dev]"
 # 要启用音视频：python -m pip install -e ".[media]"
+# 要启用 Redis/RQ 后台任务：python -m pip install -e ".[worker]"
 uvicorn app.main:app --reload --port 8001
 ```
 
@@ -78,6 +81,13 @@ uvicorn app.main:app --reload --port 8001
 
 ```powershell
 streamlit run streamlit_app.py --server.port 8502
+```
+
+默认 `TASK_QUEUE_MODE=inline`，上传材料和生成报告会在当前 API 进程内立即执行，适合本机演示。如需模拟生产中的后台任务：
+
+```powershell
+$env:TASK_QUEUE_MODE="rq"
+python scripts/run_worker.py
 ```
 
 ## 检索评估

@@ -45,6 +45,48 @@ def refresh_case(case_id: str):
     return case
 
 
+def remember_task(case_id: str, task_id: str) -> None:
+    key = f"task_ids_{case_id}"
+    task_ids = st.session_state.setdefault(key, [])
+    if task_id not in task_ids:
+        task_ids.append(task_id)
+
+
+def render_task_panel(case_id: str, *, scope: str) -> None:
+    task_ids = st.session_state.get(f"task_ids_{case_id}", [])
+    if not task_ids:
+        return
+    with st.expander("后台任务状态", expanded=True):
+        st.caption("适合处理视频转写、OCR、报告生成等耗时任务；点击刷新可重新查询后端状态。")
+        if st.button("刷新任务状态", key=f"refresh_tasks_{scope}_{case_id}"):
+            st.rerun()
+        for task_id in task_ids:
+            task = api_get(f"/tasks/{task_id}")
+            if not task:
+                st.warning(f"任务 {task_id} 暂时无法读取。")
+                continue
+            st.markdown(
+                f"- `{task['task_id']}`｜{task['task_type']}｜"
+                f"状态：`{task['status']}`｜尝试：{task['attempts']}"
+            )
+            if task.get("error_message"):
+                st.error(f"{task.get('error_type') or 'Error'}：{task['error_message']}")
+            result = task.get("result") or {}
+            if result:
+                with st.expander(f"查看任务结果：{task['task_id']}", expanded=False):
+                    st.json(result)
+            review_task_id = result.get("review_task_id")
+            if task["task_type"] == "report_generation" and review_task_id:
+                if st.button("载入这份报告", key=f"load_report_{scope}_{task_id}"):
+                    report = api_get(f"/reports/{review_task_id}")
+                    if report:
+                        st.session_state[f"report_{case_id}"] = report
+                        st.success("报告已载入。")
+                        st.rerun()
+                    else:
+                        st.warning("报告任务已完成，但暂时无法读取报告详情。")
+
+
 with st.sidebar:
     st.header("⚖️ 分析设置")
     provider = st.selectbox("大模型提供商", PROVIDERS, index=0)
@@ -212,6 +254,11 @@ with material_tab:
         ],
         accept_multiple_files=True,
     )
+    background_ingest = st.checkbox(
+        "后台处理材料（推荐用于视频、音频或大文件）",
+        value=False,
+        key=f"background_ingest_{case_id}",
+    )
     if uploads and st.button("处理并加入本案", type="primary"):
         progress = st.progress(0, text="准备处理材料")
         for index, upload in enumerate(uploads, start=1):
@@ -221,16 +268,25 @@ with material_tab:
             body, error = api_send(
                 "POST",
                 "/materials/ingest",
-                params={"kind": "evidence", "case_id": case_id},
+                params={
+                    "kind": "evidence",
+                    "case_id": case_id,
+                    "background": str(background_ingest).lower(),
+                },
                 files={"file": (upload.name, upload.getvalue(), upload.type)},
                 timeout=900,
             )
             if error:
                 st.error(f"{upload.name}：{error}")
+            elif "task_id" in body:
+                remember_task(case_id, body["task_id"])
+                st.success(f"{upload.name}：已创建后台任务 {body['task_id']}")
             else:
                 st.success(f"{upload.name}：已形成 {body['segments']} 个可引用片段")
         progress.progress(1.0, text="材料处理完成")
         st.rerun()
+
+    render_task_panel(case_id, scope="materials")
 
     if case["materials"]:
         st.dataframe(
@@ -292,6 +348,11 @@ with report_tab:
     )
     if case["status"] == "intake":
         st.warning("问答尚未结束。你仍可提前生成，报告会标明缺失和待核实信息。")
+    background_report = st.checkbox(
+        "后台生成报告（推荐用于材料较多或模型响应较慢时）",
+        value=False,
+        key=f"background_report_{case_id}",
+    )
     if st.button("开始综合分析", type="primary"):
         api_send(
             "PATCH",
@@ -299,7 +360,8 @@ with report_tab:
             json={"analysis_goal": goal},
             timeout=30,
         )
-        with st.spinner("正在检索本案材料和权威依据，并生成分析报告…"):
+        spinner_text = "正在提交后台报告任务…" if background_report else "正在检索本案材料和权威依据，并生成分析报告…"
+        with st.spinner(spinner_text):
             body, error = api_send(
                 "POST",
                 "/reports",
@@ -308,14 +370,21 @@ with report_tab:
                     "question": goal,
                     "provider": provider,
                     "model": model or None,
+                    "background": background_report,
                 },
                 timeout=360,
             )
         if error:
             st.error(error)
+        elif "task_id" in body:
+            remember_task(case_id, body["task_id"])
+            st.success(f"已创建后台报告任务：{body['task_id']}")
+            st.rerun()
         else:
             st.session_state[f"report_{case_id}"] = body
             st.rerun()
+
+    render_task_panel(case_id, scope="reports")
 
     report = st.session_state.get(f"report_{case_id}")
     if not report and case["report_ids"]:

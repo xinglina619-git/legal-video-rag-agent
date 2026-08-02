@@ -170,6 +170,28 @@ class AppEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
+class TaskRecord(Base):
+    __tablename__ = "task_records"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    task_type: Mapped[str] = mapped_column(String(64), index=True)
+    status: Mapped[str] = mapped_column(String(32), default="queued", index=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(256), nullable=True, index=True)
+    case_id: Mapped[UUID | None] = mapped_column(nullable=True, index=True)
+    material_id: Mapped[UUID | None] = mapped_column(nullable=True, index=True)
+    review_task_id: Mapped[UUID | None] = mapped_column(nullable=True, index=True)
+    payload_json: Mapped[dict] = mapped_column(json_type(), default=dict)
+    result_json: Mapped[dict] = mapped_column(json_type(), default=dict)
+    error_type: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
+
+
 settings = get_settings()
 engine = create_engine(
     settings.database_url,

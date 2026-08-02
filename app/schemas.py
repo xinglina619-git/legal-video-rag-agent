@@ -12,6 +12,16 @@ class MaterialResponse(BaseModel):
     case_id: UUID | None = None
 
 
+class TaskStatusResponse(BaseModel):
+    task_id: UUID
+    task_type: str
+    status: str
+    result: dict = Field(default_factory=dict)
+    error_type: str | None = None
+    error_message: str | None = None
+    attempts: int = 0
+
+
 class Citation(BaseModel):
     material_id: UUID
     title: str
@@ -40,6 +50,7 @@ class ReportRequest(BaseModel):
     )
     provider: str | None = None
     model: str | None = None
+    background: bool = False
 
 
 class ReportResponse(BaseModel):
