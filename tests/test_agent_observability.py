@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.config import Settings
 from app.db import Base
-from app.schemas import CaseCreate, Citation, ReviewDecision
+from app.schemas import CaseCreate, Citation, QualityGateAssessment, ReviewDecision
 from app.services import agent, cases, ingestion
 
 
@@ -102,6 +102,18 @@ def test_report_and_review_emit_events(tmp_path, monkeypatch):
     monkeypatch.setattr(agent, "get_hybrid_store", lambda _settings: Store())
     monkeypatch.setattr(agent, "get_chat_model_with_fallback", lambda *_args: Model())
     monkeypatch.setattr(agent, "emit_event", lambda event_type, **kwargs: events.append((event_type, kwargs)))
+    monkeypatch.setattr(
+        agent,
+        "evaluate_quality_gate",
+        lambda *_args, **_kwargs: QualityGateAssessment(
+            available=True,
+            needs_human_review=True,
+            risk_level="medium",
+            confidence=0.91,
+            model_version="jev-1.13-20260917",
+            request_id="dec_123",
+        ),
+    )
     settings = Settings(storage_dir=tmp_path, qdrant_url="local")
 
     result = agent.run_report(
@@ -120,4 +132,7 @@ def test_report_and_review_emit_events(tmp_path, monkeypatch):
     assert "report.started" in event_types
     assert event_types.count("retrieval.completed") >= 2
     assert "report.generated" in event_types
+    assert result.quality_gate.risk_level == "medium"
+    assert "report.quality_gate_completed" in event_types
+    assert result.status == "pending"
     assert "review.approved" in event_types

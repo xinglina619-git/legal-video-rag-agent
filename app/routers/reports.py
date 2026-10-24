@@ -6,8 +6,8 @@ from fastapi.responses import Response
 from app.config import get_settings
 from sqlalchemy import select
 
-from app.db import ReportCitation, ReviewTask, SessionLocal
-from app.schemas import ReportRequest, ReportResponse, TaskStatusResponse
+from app.db import AppEvent, ReportCitation, ReviewTask, SessionLocal
+from app.schemas import QualityGateAssessment, ReportRequest, ReportResponse, TaskStatusResponse
 from app.services.agent import run_report
 from app.services.cases import (
     analysis_context_for_case,
@@ -68,12 +68,30 @@ def saved_report(task_id: UUID):
             .where(ReportCitation.review_task_id == task_id)
             .order_by(ReportCitation.position)
         ).all()
+        quality_event = session.scalar(
+            select(AppEvent)
+            .where(
+                AppEvent.review_task_id == task_id,
+                AppEvent.event_type.in_(
+                    ["report.quality_gate_completed", "report.quality_gate_unavailable"]
+                ),
+            )
+            .order_by(AppEvent.created_at.desc())
+        )
+        quality_gate = (
+            QualityGateAssessment(
+                **((quality_event.safe_metadata or {}).get("quality_gate") or {})
+            )
+            if quality_event
+            else QualityGateAssessment(reason="未找到质量门记录")
+        )
         return {
             "review_task_id": str(task.id),
             "report_markdown": task.report_markdown,
             "status": task.status,
             "citations": [item.citation_json for item in citations],
             "legal_domain": "saved",
+            "quality_gate": quality_gate.model_dump(mode="json"),
         }
 
 

@@ -3,6 +3,8 @@ import os
 import requests
 import streamlit as st
 
+from app.services.jev import quality_gate_summary
+
 API_URL = os.getenv("API_URL", "http://localhost:8001")
 PROVIDERS = ["deepseek", "openai", "ollama", "dashscope", "siliconflow", "custom"]
 DISPUTE_TYPES = {
@@ -409,6 +411,9 @@ with report_tab:
             st.session_state[f"report_{case_id}"] = report
     if report:
         st.divider()
+        with st.expander("JEV 质量门", expanded=True):
+            for line in quality_gate_summary(report.get("quality_gate")):
+                st.write(line)
         draft = st.text_area(
             "报告草稿（可人工修改后确认）",
             value=report["report_markdown"],

@@ -51,6 +51,12 @@ class Settings(BaseSettings):
     task_queue_name: str = "legal-agent"
     task_max_attempts: int = 3
     task_retry_delay_seconds: float = 1.0
+    jev_enabled: bool = False
+    jev_api_key: str | None = None
+    jev_base_url: str = "https://jev-ai.org/api/v1"
+    jev_model: str = "jev-1.13"
+    jev_timeout_seconds: float = 5.0
+    jev_min_confidence: float = 0.85
     hf_token: str | None = None
     pageindex_home: Path = Path(".vendor/pageindex")
     model_config = SettingsConfigDict(

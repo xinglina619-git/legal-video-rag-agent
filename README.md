@@ -124,6 +124,23 @@ LANGSMITH_RECORD_INPUTS=false
 
 真实案件材料接入第三方观测平台前，应先确认授权、脱敏和采样策略。
 
+## JEV 报告质量门（可选）
+
+项目可选接入 JEV 作为独立的决策层。它不生成报告，而是在报告草稿完成后，对证据支撑度、权威依据充分性、越界风险、风险等级和人工复核必要性进行结构化判断，并把概率、置信度和模型版本写入审计事件。
+
+默认关闭 JEV，不配置第三方 Key 也可以完整运行：
+
+```env
+JEV_ENABLED=false
+JEV_API_KEY=
+JEV_BASE_URL=https://jev-ai.org/api/v1
+JEV_MODEL=jev-1.13
+JEV_TIMEOUT_SECONDS=5
+JEV_MIN_CONFIDENCE=0.85
+```
+
+启用前请确认法律材料可以发送到对应第三方服务；系统会再次脱敏，但 JEV 质量门只提供分流建议，报告仍必须经过人工复核，绝不会自动放行或输出胜诉结论。建议评估阶段使用固定模型版本，并记录返回的 `model_version`。
+
 ## 公开数据边界
 
 `data/demo/` 中的转写材料和法规摘要均为演示用途。上传真实材料前必须确认拥有合法授权；不得上传他人隐私材料、未公开案件材料或受保密义务约束的信息。
@@ -131,3 +148,4 @@ LANGSMITH_RECORD_INPUTS=false
 ## 多模型模式
 
 界面可选择 Ollama、OpenAI、DeepSeek、百炼、硅基流动或 custom 兼容接口。API Key 仅保存在 `.env.local`，不发送到浏览器，不提交 Git。
+JEV 不作为报告生成模型出现在这里的提供商列表中，而是独立的报告质量决策层。
