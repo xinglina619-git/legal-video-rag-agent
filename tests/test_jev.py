@@ -183,3 +183,33 @@ def test_quality_gate_forces_human_review_for_high_risk_answer(monkeypatch):
 
     assert result.risk_level == "high"
     assert result.needs_human_review is True
+
+
+def test_quality_gate_degrades_on_malformed_answer(monkeypatch):
+    jev = _jev_module()
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            answers = {
+                name: {"type": "noul", "noul": 0.9}
+                for name in (
+                    "grounding_ok",
+                    "authority_sufficient",
+                    "overclaiming_risk",
+                    "needs_human_review",
+                )
+            }
+            answers["risk_level"] = "not-an-answer"
+            answers["evidence_sufficiency"] = {"type": "score", "score": 2, "confidence": 0.9}
+            return {"answers": answers}
+
+    monkeypatch.setattr(jev.requests, "post", lambda *_args, **_kwargs: Response())
+    result = jev.evaluate_quality_gate(
+        Settings(jev_enabled=True, jev_api_key="test"), "报告", request_id="r4"
+    )
+
+    assert result.available is False
+    assert result.needs_human_review is True

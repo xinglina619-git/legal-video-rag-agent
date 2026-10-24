@@ -138,7 +138,7 @@ def evaluate_quality_gate(
         )
         response.raise_for_status()
         return _parse_response(response.json(), settings)
-    except (requests.RequestException, TypeError, ValueError, KeyError) as exc:
+    except (requests.RequestException, AttributeError, TypeError, ValueError, KeyError) as exc:
         return _fallback(f"JEV 质量门不可用：{type(exc).__name__}: {exc}")
 
 
