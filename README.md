@@ -12,7 +12,7 @@
 - **证据与依据双库**：本案材料进入 Evidence Collection，法规、司法解释和官方材料进入 Authority Collection。
 - **可追溯报告**：报告来源清单区分 `[证据N]` 和 `[依据N]`，便于人工核验。
 - **安全边界**：在线模型调用前脱敏手机号、身份证号、银行卡号；报告不输出胜诉率或确定裁判结论。
-- **长任务队列化**：视频转写、OCR 和报告生成可切换为 Redis/RQ 后台任务，前端通过任务状态查询进度。
+- **长任务队列化**：视频转写、OCR 和报告生成可切换为 Redis/RQ 后台任务，前端通过任务状态查询阶段、进度、重试和错误信息，并支持协作式取消。
 
 ## 支持的输入
 
@@ -68,7 +68,7 @@ data/demo/loan_case/
 
 ```powershell
 Copy-Item .env.example .env.local
-docker compose up -d
+docker compose --env-file .env.local up -d
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e ".[dev]"
@@ -89,6 +89,8 @@ streamlit run streamlit_app.py --server.port 8502
 $env:TASK_QUEUE_MODE="rq"
 python scripts/run_worker.py
 ```
+
+任务状态会区分排队、执行、重试、成功、失败和取消，并在材料解析/索引、报告生成/人工复核等阶段上报进度。取消不会强制杀死正在运行的 FFmpeg 或 Whisper 进程，而是在当前阶段结束后协作式停止。
 
 ## 检索评估
 

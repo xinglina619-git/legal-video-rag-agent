@@ -65,10 +65,26 @@ def render_task_panel(case_id: str, *, scope: str) -> None:
             if not task:
                 st.warning(f"任务 {task_id} 暂时无法读取。")
                 continue
+            status = task.get("status", "unknown")
+            stage = task.get("stage", "queued")
+            progress = max(0, min(int(task.get("progress", 0)), 100))
+            stage_message = task.get("progress_message") or "等待 Worker 处理"
             st.markdown(
                 f"- `{task['task_id']}`｜{task['task_type']}｜"
-                f"状态：`{task['status']}`｜尝试：{task['attempts']}"
+                f"状态：`{status}`｜阶段：`{stage}`｜"
+                f"尝试：{task.get('attempts', 0)}/{task.get('max_attempts', 3)}"
             )
+            st.progress(progress, text=f"{stage_message}（{progress}%）")
+            cancelable = status in {"queued", "running", "retrying"}
+            if cancelable and st.button(
+                "取消任务", key=f"cancel_task_{scope}_{task_id}", type="secondary"
+            ):
+                _, error = api_send("POST", f"/tasks/{task_id}/cancel", timeout=30)
+                if error:
+                    st.error(f"取消失败：{error}")
+                else:
+                    st.info("已提交取消请求；正在执行的转写或模型调用会在当前阶段结束后停止。")
+                    st.rerun()
             if task.get("error_message"):
                 st.error(f"{task.get('error_type') or 'Error'}：{task['error_message']}")
             result = task.get("result") or {}

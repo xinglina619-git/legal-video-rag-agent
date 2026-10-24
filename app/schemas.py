@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -16,10 +17,18 @@ class TaskStatusResponse(BaseModel):
     task_id: UUID
     task_type: str
     status: str
+    stage: str = "queued"
+    progress: int = Field(default=0, ge=0, le=100)
+    progress_message: str | None = None
+    cancel_requested: bool = False
     result: dict = Field(default_factory=dict)
     error_type: str | None = None
     error_message: str | None = None
     attempts: int = 0
+    max_attempts: int = 3
+    created_at: datetime | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
 
 
 class Citation(BaseModel):

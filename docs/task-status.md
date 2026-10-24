@@ -60,11 +60,11 @@ generating -> pending_review -> approved
 - `rejected`：人工驳回或要求修改；
 - `failed`：生成失败。
 
-## 4. Demo 阶段为什么不直接上 Celery
+## 4. Demo 与生产模式的切换
 
-Celery、Redis、对象存储和任务队列更接近生产系统，但会明显扩大 Demo 范围。当前项目更适合先用数据库状态字段表达任务生命周期，保留后续扩展接口。
+当前项目默认使用 `TASK_QUEUE_MODE=inline`，便于本机演示；切换到 `rq` 后，材料处理和报告生成会由 Redis/RQ Worker 执行。两种模式共用 `TaskRecord` 状态、进度、重试和取消语义，前端通过 `/tasks/{task_id}` 查询。
 
 面试时可以这样回答：
 
-> 当前 Demo 使用数据库状态字段记录材料处理、报告生成和人工复核进度。生产化时可以把转写、OCR、索引和报告生成拆成异步任务，用 Celery 或 RQ 执行，前端通过轮询或 WebSocket 查询任务状态。
+> Demo 默认同步是为了降低启动成本，但任务边界已经抽象出来。生产环境切换为 Redis/RQ Worker 后，HTTP 请求只负责创建任务，Worker 负责转写、OCR、索引和报告生成；数据库记录任务生命周期，前端查询阶段与进度。后续还可以接入死信队列、人工补偿和 WebSocket 推送。
 

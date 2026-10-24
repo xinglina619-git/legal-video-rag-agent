@@ -30,6 +30,20 @@ def test_task_status_route_returns_saved_task(tmp_path, monkeypatch):
     assert response.json()["status"] == "queued"
 
 
+def test_cancel_task_route_returns_cancelled_task(tmp_path, monkeypatch):
+    sessions = isolated_sessions(tmp_path)
+    monkeypatch.setattr(task_queue, "SessionLocal", sessions)
+    monkeypatch.setattr(tasks, "SessionLocal", sessions)
+    monkeypatch.setattr(task_queue, "emit_event", lambda *_args, **_kwargs: None)
+    task = task_queue.create_task("demo", {"value": 1})
+
+    response = TestClient(app).post(f"/tasks/{task.id}/cancel")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "cancelled"
+    assert response.json()["cancel_requested"] is True
+
+
 def test_material_ingest_background_returns_task(monkeypatch, tmp_path):
     captured = {}
 

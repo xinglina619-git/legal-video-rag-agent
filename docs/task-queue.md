@@ -28,10 +28,14 @@
 | --- | --- |
 | `queued` | 任务已创建，等待执行 |
 | `running` | Worker 或 inline 执行器正在处理 |
+| `retrying` | 本次尝试失败，仍有剩余尝试次数 |
 | `succeeded` | 处理完成，`result` 中保存材料或报告结果 |
 | `failed` | 处理失败，保存 `error_type` 与 `error_message` |
+| `cancelled` | 已取消；运行中的任务会在当前阶段结束后协作式停止 |
 
 状态变化也会写入 `app_events`，因此可以和现有可观测性、LangSmith trace 组合排查问题。
+
+任务响应还会返回当前阶段、0 到 100 的 `progress`、阶段说明 `progress_message`、`attempts` / `max_attempts` 和 `cancel_requested`。
 
 ## API
 
@@ -65,6 +69,14 @@ POST /reports
 GET /tasks/{task_id}
 ```
 
+### 取消任务
+
+```http
+POST /tasks/{task_id}/cancel
+```
+
+取消是协作式的：排队中的任务会立即标记为 `cancelled`，正在执行 FFmpeg、Whisper 或模型调用的任务不会被强制杀死，而是在当前处理阶段结束后停止下一阶段或下一次重试。
+
 报告任务完成后，`result.review_task_id` 可用于继续读取报告、人工确认和导出 PDF/Word。
 
 ## 本机运行方式
@@ -81,7 +93,7 @@ TASK_QUEUE_MODE=inline
 
 ```powershell
 python -m pip install -e ".[worker]"
-docker compose up -d
+docker compose --env-file .env.local up -d
 $env:TASK_QUEUE_MODE="rq"
 uvicorn app.main:app --reload --port 8001
 ```
@@ -101,4 +113,6 @@ Streamlit 页面会显示任务 ID、任务状态、失败原因和完成结果�
 - `task_records` 是任务状态事实表，便于恢复、审计和排障。
 - `TASK_QUEUE_MODE=inline` 让 Demo 简单可跑，`rq` 模式展示生产演进路径。
 - 任务事件进入 `app_events`，能和 LangSmith、日志、指标体系串起来。
-- 当前版本保留 `max_attempts` 字段，为后续重试、死信队列和人工补偿预留扩展点。
+- Worker 失败会在 `max_attempts` 内自动重试，并保存最后一次错误，便于后续接入死信队列和人工补偿。
+- 材料任务会展示“解析/转写”和“索引写入”阶段，报告任务会展示“检索与生成”和“等待人工复核”阶段。
+- 前端刷新页面后仍可根据会话中的任务 ID 查询状态，不依赖浏览器一直保持原请求。

@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     task_queue_name: str = "legal-agent"
     task_max_attempts: int = 3
+    task_retry_delay_seconds: float = 1.0
     hf_token: str | None = None
     pageindex_home: Path = Path(".vendor/pageindex")
     model_config = SettingsConfigDict(
