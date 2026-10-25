@@ -62,12 +62,25 @@ class ReportRequest(BaseModel):
     background: bool = False
 
 
+class QualityGateAssessment(BaseModel):
+    available: bool = False
+    needs_human_review: bool = True
+    risk_level: str | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    answers: dict = Field(default_factory=dict)
+    model_version: str | None = None
+    request_id: str | None = None
+    latency_ms: int | None = Field(default=None, ge=0)
+    reason: str | None = None
+
+
 class ReportResponse(BaseModel):
     report_markdown: str
     citations: list[Citation]
     review_task_id: UUID
     status: str
     legal_domain: str
+    quality_gate: QualityGateAssessment | None = None
 
 
 class ReviewDecision(BaseModel):

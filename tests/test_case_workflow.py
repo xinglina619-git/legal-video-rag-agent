@@ -121,6 +121,9 @@ def test_case_report_uses_case_context_and_persists_citations(tmp_path, monkeypa
 
     assert result.legal_domain == "civil_contract"
     assert len(result.citations) == 2
+    assert result.quality_gate is not None
+    assert result.quality_gate.available is False
+    assert result.status == "pending"
     assert all("借款" in query for query in store.queries)
     with sessions() as session:
         saved = session.scalars(

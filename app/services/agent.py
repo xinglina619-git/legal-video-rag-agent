@@ -11,9 +11,10 @@ from langgraph.types import Command, interrupt
 
 from app.config import Settings
 from app.db import ReportCitation, ReviewTask, SessionLocal
-from app.schemas import Citation, ReportResponse, ReviewDecision
+from app.schemas import Citation, QualityGateAssessment, ReportResponse, ReviewDecision
 from app.services.authority import QuestionRoute, classify_question, rank_authority_results
 from app.services.llm import get_chat_model_with_fallback
+from app.services.jev import evaluate_quality_gate
 from app.services.official_search import search_official_sources
 from app.services.observability import emit_event
 from app.services.privacy import redact_sensitive_text
@@ -78,6 +79,22 @@ def build_labeled_citations(evidence: list[dict], authorities: list[dict]) -> li
                 )
             )
     return labeled
+
+
+def _quality_gate_state(
+    draft: str,
+    evidence: list[dict],
+    authorities: list[dict],
+    legal_domain: str,
+) -> str:
+    """构造发送给质量门的最小脱敏上下文，不包含文件路径和原始上传内容。"""
+    state = (
+        f"法律领域：{legal_domain}\n\n"
+        f"报告草稿：\n{draft}\n\n"
+        f"本案证据：\n{format_citations_for_prompt(evidence, '证据')}\n\n"
+        f"权威依据：\n{format_citations_for_prompt(authorities, '依据')}"
+    )
+    return redact_sensitive_text(state[:30_000])
 
 
 @lru_cache
@@ -266,6 +283,39 @@ def run_report(
     )
     snapshot = graph.get_state(config)
     state = snapshot.values
+    try:
+        quality_gate = evaluate_quality_gate(
+            settings,
+            _quality_gate_state(
+                state["draft"],
+                state["evidence"],
+                state["authorities"],
+                route.legal_domain,
+            ),
+            request_id=f"report-quality:{task_id}",
+        )
+    except Exception as exc:
+        # 质量门不能阻断报告生成；任何未预期异常都回退到人工复核。
+        quality_gate = QualityGateAssessment(
+            available=False,
+            needs_human_review=True,
+            reason=f"JEV 质量门不可用：{type(exc).__name__}",
+        )
+    quality_event_type = (
+        "report.quality_gate_completed"
+        if quality_gate.available
+        else "report.quality_gate_unavailable"
+    )
+    emit_event(
+        quality_event_type,
+        status="success" if quality_gate.available else "degraded",
+        review_task_id=task_id,
+        request_id=quality_gate.request_id,
+        provider="jev",
+        model=quality_gate.model_version or settings.jev_model,
+        duration_ms=quality_gate.latency_ms,
+        metadata={"quality_gate": quality_gate.model_dump(mode="json")},
+    )
     with SessionLocal() as session:
         task = session.get(ReviewTask, task_id)
         assert task is not None
@@ -302,6 +352,7 @@ def run_report(
         review_task_id=task_id,
         status="pending",
         legal_domain=route.legal_domain,
+        quality_gate=quality_gate,
     )
 
 
